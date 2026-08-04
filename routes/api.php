@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ConceptController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/concepts', [ConceptController::class, 'index']);
 Route::get('/concepts/{concept:slug}', [ConceptController::class, 'show']);
