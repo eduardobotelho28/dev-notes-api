@@ -65,12 +65,12 @@ class ConceptController extends Controller
         ]);
 
         $concept = Concept::create([
-            'title' => $validated['title'],
-            'slug' => Str::slug($validated['title']),
-            'tldr' => $validated['tldr'],
-            'summary' => $validated['summary'],
-            'field_notes' => $validated['field_notes'] ?? null,
-            'image_path' => $validated['image_path'] ?? null,
+            'title'         => $validated['title'],
+            'slug'          => $this->uniqueSlug($validated['title']),
+            'tldr'          => $validated['tldr'],
+            'summary'       => $validated['summary'],
+            'field_notes'   => $validated['field_notes'] ?? null,
+            'image_path'    => $validated['image_path'] ?? null,
         ]);
 
         if (!empty($validated['tags'])) {
@@ -89,5 +89,59 @@ class ConceptController extends Controller
         $concept->delete();
 
         return response()->json(null, 204);
+    }
+
+    public function update(Request $request, Concept $concept)
+    {
+        $validated = $request->validate([
+            'title'          => 'sometimes|required|string|max:255',
+            'tldr'           => 'sometimes|required|string|max:255',
+            'summary'        => 'sometimes|required|string',
+            'field_notes'    => 'nullable|string',
+            'image_path'     => 'nullable|string',
+            'tags'           => 'array',
+            'tags.*'         => 'exists:tags,id',
+            'links'          => 'array',
+            'links.*.title'  => 'required_with:links|string',
+            'links.*.url'    => 'required_with:links|url',
+            'links.*.type'   => 'nullable|string',
+        ]);
+
+        if (isset($validated['title']) && $validated['title'] !== $concept->title) {
+            $validated['slug'] = $this->uniqueSlug($validated['title'], $concept->id);
+        }
+
+        $concept->update(collect($validated)->except(['tags', 'links'])->toArray());
+
+        if ($request->has('tags')) {
+            $concept->tags()->sync($validated['tags'] ?? []);
+        }
+
+        if ($request->has('links')) {
+            $concept->links()->delete();
+            if (!empty($validated['links'])) {
+                $concept->links()->createMany($validated['links']);
+            }
+        }
+
+        return response()->json($concept->fresh()->load(['tags', 'links']));
+    }
+
+    private function uniqueSlug(string $title, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($title);
+        $slug = $base;
+        $i = 1;
+
+        while (
+            Concept::where('slug', $slug)
+                ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+                ->exists()
+        ) {
+            $slug = "{$base}-{$i}";
+            $i++;
+        }
+
+        return $slug;
     }
 }
